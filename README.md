@@ -2,15 +2,25 @@
 
 English | [简体中文](README.zh-CN.md)
 
-These scripts launch the `@deepseek-ai/dsh` Web UI in the current directory. The
-directory containing the scripts becomes the default DSH workspace.
+These scripts launch the `@deepseek-ai/dsh` Web UI. The directory containing the
+launcher scripts becomes the default DSH workspace.
 Launcher messages are shown in Chinese when the system UI language is Chinese;
 all other languages use English.
 Keep `dsh-manager.mjs` in the same directory as the launcher scripts.
 
+## Download
+
+- [Windows ZIP](https://github.com/leftzzzz/dsh-one-click-bootstrap/releases/latest/download/dsh-one-click-bootstrap-windows.zip)
+- [Linux and macOS tar.gz](https://github.com/leftzzzz/dsh-one-click-bootstrap/releases/latest/download/dsh-one-click-bootstrap-linux-macos.tar.gz)
+- [Release notes and SHA-256 checksums](https://github.com/leftzzzz/dsh-one-click-bootstrap/releases/latest)
+
+Extract the archive before launching DSH. Release archives are published
+automatically when a version tag such as `v1.0.0` is pushed.
+
 ## Windows
 
-Double-click `start-dsh.cmd`. Keep the command prompt window open while using DSH.
+Double-click `start-dsh.cmd`. Keep the PowerShell window opened by the launcher
+open while using DSH.
 
 You can also run the PowerShell script directly:
 
@@ -32,8 +42,8 @@ made executable.
 
 ## What the scripts install
 
-- If a compatible Node.js version is already available, the scripts use it
-  without installing another copy.
+- If Node.js 24 or Node.js 22 (minimum 22.19) is already available, the scripts
+  use it without installing another copy. Other major versions are not used.
 - If Node.js is missing or incompatible, the scripts download the latest Node.js
   24 release from `nodejs.org`, verify it against the official SHA-256 checksum,
   and install it for the current user only.
@@ -43,6 +53,8 @@ made executable.
 - The first launch installs the latest version. Later launches check for updates
   at most once every 24 hours and ask before installing one; declining skips
   that version and keeps the current version.
+- After a successful update, the launcher keeps the current and immediately
+  previous DSH versions and removes older managed versions.
 - If an update check or installation fails, the current version remains active.
 - The scripts do not modify the system `PATH` and do not require administrator
   privileges.

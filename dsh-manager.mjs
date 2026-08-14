@@ -40,6 +40,8 @@ const messages = language === "zh"
       checkFailed: "无法检查更新，继续使用 DeepSeek Harness {0}。",
       installFailed: "无法安装 DeepSeek Harness {0}，继续使用当前版本。",
       initialInstallFailed: "无法安装 DeepSeek Harness {0}。",
+      cleanedVersions: "已清理旧版 DeepSeek Harness：{0}。",
+      cleanupFailed: "部分旧版 DeepSeek Harness 无法清理，将继续启动。",
       lookupFailed: "无法获取 DeepSeek Harness 最新版本。",
       currentInvalid: "受管的 DeepSeek Harness 安装无效。",
       usingDsh: "正在使用 DeepSeek Harness {0}。",
@@ -60,6 +62,8 @@ const messages = language === "zh"
       checkFailed: "Could not check for updates. Continuing with DeepSeek Harness {0}.",
       installFailed: "Could not install DeepSeek Harness {0}; the current version was kept.",
       initialInstallFailed: "Could not install DeepSeek Harness {0}.",
+      cleanedVersions: "Removed old DeepSeek Harness versions: {0}.",
+      cleanupFailed: "Some old DeepSeek Harness versions could not be removed; continuing startup.",
       lookupFailed: "Could not determine the latest DeepSeek Harness version.",
       currentInvalid: "The managed DeepSeek Harness installation is invalid.",
       usingDsh: "Using DeepSeek Harness {0}.",
@@ -352,6 +356,49 @@ async function installVersion(version) {
   }
 }
 
+function pathKey(value) {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function cleanupOldVersions(keepInstallations) {
+  const keepPaths = new Set(keepInstallations.map((installation) => pathKey(installation.path)));
+  const removed = [];
+  let failed = false;
+  let entries;
+
+  try {
+    entries = fs.readdirSync(dshBase, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !isVersion(entry.name)) {
+      continue;
+    }
+
+    const directory = path.join(dshBase, entry.name);
+    if (keepPaths.has(pathKey(directory))) {
+      continue;
+    }
+
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+      removed.push(entry.name);
+    } catch {
+      failed = true;
+    }
+  }
+
+  if (removed.length > 0) {
+    log(format(messages.cleanedVersions, removed.join(", ")));
+  }
+  if (failed) {
+    log(messages.cleanupFailed);
+  }
+}
+
 async function confirmUpgrade() {
   if (!process.stdin.isTTY) {
     return false;
@@ -491,6 +538,7 @@ async function ensureInstallation() {
       throw new Error(format(messages.initialInstallFailed, latest));
     }
     setCurrent(current);
+    cleanupOldVersions([current]);
     return current;
   }
 
@@ -530,6 +578,7 @@ async function ensureInstallation() {
   try {
     const updated = await installVersion(latest);
     setCurrent(updated);
+    cleanupOldVersions([updated, current]);
     fs.rmSync(skippedFile, { force: true });
     log(format(messages.switched, updated.version));
     return updated;

@@ -77,7 +77,7 @@ function Test-CompatibleNode {
 
     $major = [int]$Matches.major
     $minor = [int]$Matches.minor
-    return ($major -ge 24) -or ($major -eq 22 -and $minor -ge 19)
+    return ($major -eq 24) -or ($major -eq 22 -and $minor -ge 19)
 }
 
 function Enable-LocalNode {

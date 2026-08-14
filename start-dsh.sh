@@ -71,7 +71,7 @@ node_is_compatible() {
   IFS=. read -r major minor _ <<<"$version"
 
   [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] || return 1
-  (( major >= 24 || (major == 22 && minor >= 19) ))
+  (( major == 24 || (major == 22 && minor >= 19) ))
 }
 
 activate_local_node() {
