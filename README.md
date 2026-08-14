@@ -1,35 +1,42 @@
-# DSH 一键启动器
+# DSH One-Click Launcher
 
-这些脚本会在当前文件夹启动 `@deepseek-ai/dsh` Web UI。脚本所在文件夹会成为
-DSH 的默认工作区位置。
+English | [简体中文](README.zh-CN.md)
+
+These scripts launch the `@deepseek-ai/dsh` Web UI in the current directory. The
+directory containing the scripts becomes the default DSH workspace.
 
 ## Windows
 
-双击 `start-dsh.cmd`，使用 DSH 时不要关闭命令行窗口。
+Double-click `start-dsh.cmd`. Keep the command prompt window open while using DSH.
 
-也可以直接运行 PowerShell 脚本：
+You can also run the PowerShell script directly:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start-dsh.ps1
 ```
 
-## Linux 和 macOS
+## Linux and macOS
 
-首次使用时赋予 Bash 脚本执行权限，然后运行：
+Make the Bash script executable before running it for the first time:
 
 ```bash
 chmod +x ./start-dsh.sh
 ./start-dsh.sh
 ```
 
-部分桌面环境允许直接双击已经设置为可执行的脚本。
+Some desktop environments also let you double-click the script after it has been
+made executable.
 
-## 脚本会安装什么
+## What the scripts install
 
-- 已有兼容的 Node.js 时直接使用，不重复安装。
-- Node.js 缺失或版本不兼容时，从 `nodejs.org` 下载最新版 Node.js 24，校验官方
-  SHA-256 后仅安装到当前用户目录。
-- `npx` 会按需下载并缓存最新版 `@deepseek-ai/dsh`。
-- 不修改系统 `PATH`，不需要管理员权限。
+- If a compatible Node.js version is already available, the scripts use it
+  without installing another copy.
+- If Node.js is missing or incompatible, the scripts download the latest Node.js
+  24 release from `nodejs.org`, verify it against the official SHA-256 checksum,
+  and install it for the current user only.
+- `npx` downloads and caches the latest `@deepseek-ai/dsh` package as needed.
+- The scripts do not modify the system `PATH` and do not require administrator
+  privileges.
 
-启动后打开 <http://127.0.0.1:3080>。在命令行窗口按 `Ctrl+C` 即可停止 DSH。
+Once DSH starts, open <http://127.0.0.1:3080>. Press `Ctrl+C` in the command prompt
+or terminal window to stop DSH.
