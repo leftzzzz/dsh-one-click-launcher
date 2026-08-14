@@ -7,9 +7,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$DshPackage = "@deepseek-ai/dsh@latest"
 $InstallBase = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "dsh-launcher"
-$CurrentFile = Join-Path $InstallBase "current.txt"
+$NodeCurrentFile = Join-Path $InstallBase "node-current.txt"
+$LegacyNodeCurrentFile = Join-Path $InstallBase "current.txt"
+$DshManagerFile = Join-Path $PSScriptRoot "dsh-manager.mjs"
 $DshLanguage = if ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq "zh") { "zh" } else { "en" }
 $DshMessages = @{
     en = @{
@@ -20,12 +21,10 @@ $DshMessages = @{
         ChecksumFailed = "Node.js checksum verification failed."
         NodeMissing = "Node.js is missing or incompatible. Installing a private copy..."
         NodeInstallFailed = "Node.js installation did not produce a compatible runtime."
-        NpxNotFound = "npx was not found next to Node.js."
+        NpmNotFound = "npm was not found next to Node.js."
+        ManagerNotFound = "The DSH manager file is missing."
+        ManagerFailed = "DeepSeek Harness setup failed."
         UsingNode = "Using Node.js {0}."
-        Preparing = "Preparing DeepSeek Harness. The first launch may take several minutes."
-        Ready = "DSH is ready when it prints: dsh web: http://127.0.0.1:3080"
-        KeepOpen = "Keep this window open. Press Ctrl+C to stop."
-        HarnessExited = "DeepSeek Harness exited with code {0}."
         ErrorLabel = "ERROR: "
         ClosePrompt = "Press Enter to close"
     }
@@ -37,12 +36,10 @@ $DshMessages = @{
         ChecksumFailed = "Node.js 校验和验证失败。"
         NodeMissing = "未检测到 Node.js 或版本不兼容，正在安装独立副本..."
         NodeInstallFailed = "Node.js 安装完成后仍未获得兼容的运行时。"
-        NpxNotFound = "在 Node.js 目录中找不到 npx。"
+        NpmNotFound = "在 Node.js 目录中找不到 npm。"
+        ManagerNotFound = "缺少 DSH 管理器文件。"
+        ManagerFailed = "DeepSeek Harness 准备失败。"
         UsingNode = "正在使用 Node.js {0}。"
-        Preparing = "正在准备 DeepSeek Harness。首次启动可能需要几分钟。"
-        Ready = "当出现以下内容时，DSH 已就绪：dsh web: http://127.0.0.1:3080"
-        KeepOpen = "使用期间请保持此窗口打开。按 Ctrl+C 可停止。"
-        HarnessExited = "DeepSeek Harness 已退出，退出代码：{0}。"
         ErrorLabel = "错误："
         ClosePrompt = "按 Enter 键关闭"
     }
@@ -51,19 +48,20 @@ $DshMessages = @{
 function Get-DshText {
     param(
         [string]$Key,
-        [object]$Value
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [object[]]$Values
     )
 
     $text = $DshMessages[$DshLanguage][$Key]
-    if ($PSBoundParameters.ContainsKey("Value")) {
-        return $text -f $Value
+    if ($Values.Count -gt 0) {
+        return $text -f $Values
     }
     return $text
 }
 
 function Write-DshLog {
     param([string]$Message)
-    Write-Host "`n[dsh] $Message" -ForegroundColor Cyan
+    Write-Host "$([Environment]::NewLine)[dsh] $Message" -ForegroundColor Cyan
 }
 
 function Test-CompatibleNode {
@@ -83,15 +81,24 @@ function Test-CompatibleNode {
 }
 
 function Enable-LocalNode {
-    if (-not (Test-Path -LiteralPath $CurrentFile -PathType Leaf)) {
+    $currentFile = if (Test-Path -LiteralPath $NodeCurrentFile -PathType Leaf) {
+        $NodeCurrentFile
+    }
+    elseif (Test-Path -LiteralPath $LegacyNodeCurrentFile -PathType Leaf) {
+        $LegacyNodeCurrentFile
+    }
+    else {
         return $false
     }
 
-    $nodeDirectory = (Get-Content -LiteralPath $CurrentFile -Encoding UTF8 -TotalCount 1).Trim()
+    $nodeDirectory = (Get-Content -LiteralPath $currentFile -Encoding UTF8 -TotalCount 1).Trim()
     if (-not (Test-Path -LiteralPath (Join-Path $nodeDirectory "node.exe") -PathType Leaf)) {
         return $false
     }
 
+    if ($currentFile -eq $LegacyNodeCurrentFile) {
+        Move-Item -LiteralPath $LegacyNodeCurrentFile -Destination $NodeCurrentFile -Force
+    }
     $env:PATH = "$nodeDirectory;$env:PATH"
     return $true
 }
@@ -140,7 +147,7 @@ function Install-LocalNode {
             Move-Item -LiteralPath $extractedDirectory -Destination $targetDirectory
         }
 
-        Set-Content -LiteralPath $CurrentFile -Value $targetDirectory -Encoding UTF8
+        Set-Content -LiteralPath $NodeCurrentFile -Value $targetDirectory -Encoding UTF8
         $env:PATH = "$targetDirectory;$env:PATH"
     }
     finally {
@@ -166,29 +173,34 @@ try {
         throw (Get-DshText "NodeInstallFailed")
     }
 
+    if (-not (Test-Path -LiteralPath $DshManagerFile -PathType Leaf)) {
+        throw (Get-DshText "ManagerNotFound")
+    }
+
     $nodeCommand = Get-Command node.exe -ErrorAction Stop
     $nodeDirectory = Split-Path -Parent $nodeCommand.Source
-    $npxCli = Join-Path $nodeDirectory "node_modules\npm\bin\npx-cli.js"
-    if (-not (Test-Path -LiteralPath $npxCli -PathType Leaf)) {
-        throw (Get-DshText "NpxNotFound")
+    $npmCli = Join-Path $nodeDirectory "node_modules\npm\bin\npm-cli.js"
+    if (-not (Test-Path -LiteralPath $npmCli -PathType Leaf)) {
+        throw (Get-DshText "NpmNotFound")
     }
     $nodeVersion = (& $nodeCommand.Source --version)
-
     Write-DshLog (Get-DshText "UsingNode" $nodeVersion)
-    Write-DshLog (Get-DshText "Preparing")
-    Write-DshLog (Get-DshText "Ready")
-    Write-DshLog (Get-DshText "KeepOpen")
 
-    # Avoid cmd shims so Ctrl+C does not traverse nested batch jobs.
-    $powerShell = Join-Path $PSHOME "powershell.exe"
-    & $nodeCommand.Source $npxCli --script-shell $powerShell --yes $DshPackage web @DshArguments
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -notin @(0, 130, -1073741510)) {
-        throw (Get-DshText "HarnessExited" $exitCode)
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $nodeCommand.Source $DshManagerFile $InstallBase $DshLanguage $npmCli --run @DshArguments
+        $managerExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($managerExitCode -notin @(0, 130, -1073741510)) {
+        throw (Get-DshText "ManagerFailed")
     }
 }
 catch {
-    Write-Host "`n[dsh] $(Get-DshText "ErrorLabel")$($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "$([Environment]::NewLine)[dsh] $(Get-DshText "ErrorLabel")$($_.Exception.Message)" -ForegroundColor Red
     if ($PauseOnError) {
         [void](Read-Host (Get-DshText "ClosePrompt"))
     }

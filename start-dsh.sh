@@ -2,10 +2,11 @@
 
 set -Eeuo pipefail
 
-DSH_PACKAGE="@deepseek-ai/dsh@latest"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_BASE="${XDG_DATA_HOME:-$HOME/.local/share}/dsh-launcher"
-CURRENT_FILE="$INSTALL_BASE/current"
+NODE_CURRENT_FILE="$INSTALL_BASE/node-current"
+LEGACY_NODE_CURRENT_FILE="$INSTALL_BASE/current"
+DSH_MANAGER_FILE="$SCRIPT_DIR/dsh-manager.mjs"
 
 DSH_LANGUAGE="en"
 case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
@@ -25,11 +26,9 @@ if [[ "$DSH_LANGUAGE" == "zh" ]]; then
   MSG_CHECKSUM_FAILED="Node.js 校验和验证失败。"
   MSG_NODE_MISSING="未检测到 Node.js 或版本不兼容，正在安装独立副本..."
   MSG_NODE_INSTALL_FAILED="Node.js 安装完成后仍未获得兼容的运行时。"
-  MSG_NPX_NOT_FOUND="在 Node.js 目录中找不到 npx。"
+  MSG_NPM_NOT_FOUND="在 Node.js 目录中找不到 npm。"
+  MSG_MANAGER_NOT_FOUND="缺少 DSH 管理器文件。"
   MSG_USING_NODE="正在使用 Node.js %s。"
-  MSG_PREPARING="正在准备 DeepSeek Harness。首次启动可能需要几分钟。"
-  MSG_READY="当出现以下内容时，DSH 已就绪：dsh web: http://127.0.0.1:3080"
-  MSG_KEEP_OPEN="使用期间请保持此窗口打开。按 Ctrl+C 可停止。"
 else
   MSG_ERROR_LABEL="ERROR: "
   MSG_SHA256_REQUIRED="A SHA-256 tool is required (sha256sum or shasum)."
@@ -43,11 +42,9 @@ else
   MSG_CHECKSUM_FAILED="Node.js checksum verification failed."
   MSG_NODE_MISSING="Node.js is missing or incompatible. Installing a private copy..."
   MSG_NODE_INSTALL_FAILED="Node.js installation did not produce a compatible runtime."
-  MSG_NPX_NOT_FOUND="npx was not found next to Node.js."
+  MSG_NPM_NOT_FOUND="npm was not found next to Node.js."
+  MSG_MANAGER_NOT_FOUND="The DSH manager file is missing."
   MSG_USING_NODE="Using Node.js %s."
-  MSG_PREPARING="Preparing DeepSeek Harness. The first launch may take several minutes."
-  MSG_READY="DSH is ready when it prints: dsh web: http://127.0.0.1:3080"
-  MSG_KEEP_OPEN="Keep this window open. Press Ctrl+C to stop."
 fi
 
 format_message() {
@@ -78,11 +75,20 @@ node_is_compatible() {
 }
 
 activate_local_node() {
-  [[ -f "$CURRENT_FILE" ]] || return 1
+  local current_file node_dir
+  if [[ -f "$NODE_CURRENT_FILE" ]]; then
+    current_file="$NODE_CURRENT_FILE"
+  elif [[ -f "$LEGACY_NODE_CURRENT_FILE" ]]; then
+    current_file="$LEGACY_NODE_CURRENT_FILE"
+  else
+    return 1
+  fi
 
-  local node_dir
-  IFS= read -r node_dir <"$CURRENT_FILE"
+  IFS= read -r node_dir <"$current_file"
   [[ -x "$node_dir/bin/node" ]] || return 1
+  if [[ "$current_file" == "$LEGACY_NODE_CURRENT_FILE" ]]; then
+    mv -f -- "$LEGACY_NODE_CURRENT_FILE" "$NODE_CURRENT_FILE"
+  fi
   export PATH="$node_dir/bin:$PATH"
 }
 
@@ -144,7 +150,7 @@ install_node() {
     mv -- "$extracted_dir" "$target_dir"
   fi
 
-  printf '%s\n' "$target_dir" >"$CURRENT_FILE"
+  printf '%s\n' "$target_dir" >"$NODE_CURRENT_FILE"
   export PATH="$target_dir/bin:$PATH"
   trap - EXIT
   rm -rf -- "$temp_dir"
@@ -163,13 +169,12 @@ main() {
   fi
 
   node_is_compatible || die "$MSG_NODE_INSTALL_FAILED"
-  command -v npx >/dev/null 2>&1 || die "$MSG_NPX_NOT_FOUND"
+  [[ -f "$DSH_MANAGER_FILE" ]] || die "$MSG_MANAGER_NOT_FOUND"
 
+  local npm_command
+  npm_command="$(command -v npm)" || die "$MSG_NPM_NOT_FOUND"
   log "$(format_message "$MSG_USING_NODE" "$(node --version)")"
-  log "$MSG_PREPARING"
-  log "$MSG_READY"
-  log "$MSG_KEEP_OPEN"
-  exec npx --yes "$DSH_PACKAGE" web "$@"
+  exec node "$DSH_MANAGER_FILE" "$INSTALL_BASE" "$DSH_LANGUAGE" "$npm_command" --run "$@"
 }
 
 main "$@"
