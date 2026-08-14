@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$PauseOnError,
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -10,6 +10,56 @@ $ProgressPreference = "SilentlyContinue"
 $DshPackage = "@deepseek-ai/dsh@latest"
 $InstallBase = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "dsh-launcher"
 $CurrentFile = Join-Path $InstallBase "current.txt"
+$DshLanguage = if ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq "zh") { "zh" } else { "en" }
+$DshMessages = @{
+    en = @{
+        UnsupportedArchitecture = "Unsupported CPU architecture: {0}"
+        FindingNode = "Finding the latest Node.js 24 release for win-{0}..."
+        NodeDownloadNotFound = "Could not find a compatible Node.js download."
+        Downloading = "Downloading {0}..."
+        ChecksumFailed = "Node.js checksum verification failed."
+        NodeMissing = "Node.js is missing or incompatible. Installing a private copy..."
+        NodeInstallFailed = "Node.js installation did not produce a compatible runtime."
+        NpxNotFound = "npx was not found next to Node.js."
+        UsingNode = "Using Node.js {0}."
+        Preparing = "Preparing DeepSeek Harness. The first launch may take several minutes."
+        Ready = "DSH is ready when it prints: dsh web: http://127.0.0.1:3080"
+        KeepOpen = "Keep this window open. Press Ctrl+C to stop."
+        HarnessExited = "DeepSeek Harness exited with code {0}."
+        ErrorLabel = "ERROR: "
+        ClosePrompt = "Press Enter to close"
+    }
+    zh = @{
+        UnsupportedArchitecture = "不支持的 CPU 架构：{0}"
+        FindingNode = "正在查找适用于 win-{0} 的最新 Node.js 24 版本..."
+        NodeDownloadNotFound = "找不到兼容的 Node.js 下载包。"
+        Downloading = "正在下载 {0}..."
+        ChecksumFailed = "Node.js 校验和验证失败。"
+        NodeMissing = "未检测到 Node.js 或版本不兼容，正在安装独立副本..."
+        NodeInstallFailed = "Node.js 安装完成后仍未获得兼容的运行时。"
+        NpxNotFound = "在 Node.js 目录中找不到 npx。"
+        UsingNode = "正在使用 Node.js {0}。"
+        Preparing = "正在准备 DeepSeek Harness。首次启动可能需要几分钟。"
+        Ready = "当出现以下内容时，DSH 已就绪：dsh web: http://127.0.0.1:3080"
+        KeepOpen = "使用期间请保持此窗口打开。按 Ctrl+C 可停止。"
+        HarnessExited = "DeepSeek Harness 已退出，退出代码：{0}。"
+        ErrorLabel = "错误："
+        ClosePrompt = "按 Enter 键关闭"
+    }
+}
+
+function Get-DshText {
+    param(
+        [string]$Key,
+        [object]$Value
+    )
+
+    $text = $DshMessages[$DshLanguage][$Key]
+    if ($PSBoundParameters.ContainsKey("Value")) {
+        return $text -f $Value
+    }
+    return $text
+}
 
 function Write-DshLog {
     param([string]$Message)
@@ -53,16 +103,16 @@ function Install-LocalNode {
     switch ($architecture) {
         "X64" { $nodeArchitecture = "x64" }
         "Arm64" { $nodeArchitecture = "arm64" }
-        default { throw "Unsupported CPU architecture: $architecture" }
+        default { throw (Get-DshText "UnsupportedArchitecture" $architecture) }
     }
 
     $baseUrl = "https://nodejs.org/dist/latest-v24.x"
-    Write-DshLog "Finding the latest Node.js 24 release for win-$nodeArchitecture..."
+    Write-DshLog (Get-DshText "FindingNode" $nodeArchitecture)
     $checksums = (Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/SHASUMS256.txt").Content
     $pattern = "(?m)^(?<hash>[a-f0-9]{64})\s+(?<file>node-v[^\s]+-win-$nodeArchitecture\.zip)$"
     $match = [regex]::Match($checksums, $pattern)
     if (-not $match.Success) {
-        throw "Could not find a compatible Node.js download."
+        throw (Get-DshText "NodeDownloadNotFound")
     }
 
     $fileName = $match.Groups["file"].Value
@@ -72,12 +122,12 @@ function Install-LocalNode {
 
     New-Item -ItemType Directory -Path $tempDirectory | Out-Null
     try {
-        Write-DshLog "Downloading $fileName..."
+        Write-DshLog (Get-DshText "Downloading" $fileName)
         Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/$fileName" -OutFile $archive
 
         $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actualHash -ne $expectedHash) {
-            throw "Node.js checksum verification failed."
+            throw (Get-DshText "ChecksumFailed")
         }
 
         Expand-Archive -LiteralPath $archive -DestinationPath $tempDirectory
@@ -108,31 +158,39 @@ try {
     }
 
     if (-not (Test-CompatibleNode)) {
-        Write-DshLog "Node.js is missing or incompatible. Installing a private copy..."
+        Write-DshLog (Get-DshText "NodeMissing")
         Install-LocalNode
     }
 
     if (-not (Test-CompatibleNode)) {
-        throw "Node.js installation did not produce a compatible runtime."
+        throw (Get-DshText "NodeInstallFailed")
     }
 
     $nodeCommand = Get-Command node.exe -ErrorAction Stop
-    $npxCommand = Get-Command npx.cmd -ErrorAction Stop
+    $nodeDirectory = Split-Path -Parent $nodeCommand.Source
+    $npxCli = Join-Path $nodeDirectory "node_modules\npm\bin\npx-cli.js"
+    if (-not (Test-Path -LiteralPath $npxCli -PathType Leaf)) {
+        throw (Get-DshText "NpxNotFound")
+    }
     $nodeVersion = (& $nodeCommand.Source --version)
 
-    Write-DshLog "Using Node.js $nodeVersion."
-    Write-DshLog "Starting DeepSeek Harness at http://127.0.0.1:3080"
-    Write-DshLog "Keep this window open. Press Ctrl+C to stop."
+    Write-DshLog (Get-DshText "UsingNode" $nodeVersion)
+    Write-DshLog (Get-DshText "Preparing")
+    Write-DshLog (Get-DshText "Ready")
+    Write-DshLog (Get-DshText "KeepOpen")
 
-    & $npxCommand.Source --yes $DshPackage web @DshArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "DeepSeek Harness exited with code $LASTEXITCODE."
+    # Avoid cmd shims so Ctrl+C does not traverse nested batch jobs.
+    $powerShell = Join-Path $PSHOME "powershell.exe"
+    & $nodeCommand.Source $npxCli --script-shell $powerShell --yes $DshPackage web @DshArguments
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -notin @(0, 130, -1073741510)) {
+        throw (Get-DshText "HarnessExited" $exitCode)
     }
 }
 catch {
-    Write-Host "`n[dsh] ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "`n[dsh] $(Get-DshText "ErrorLabel")$($_.Exception.Message)" -ForegroundColor Red
     if ($PauseOnError) {
-        [void](Read-Host "Press Enter to close")
+        [void](Read-Host (Get-DshText "ClosePrompt"))
     }
     exit 1
 }

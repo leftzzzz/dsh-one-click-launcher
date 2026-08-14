@@ -4,6 +4,8 @@ English | [简体中文](README.zh-CN.md)
 
 These scripts launch the `@deepseek-ai/dsh` Web UI in the current directory. The
 directory containing the scripts becomes the default DSH workspace.
+Launcher messages are shown in Chinese when the system UI language is Chinese;
+all other languages use English.
 
 ## Windows
 
@@ -38,5 +40,7 @@ made executable.
 - The scripts do not modify the system `PATH` and do not require administrator
   privileges.
 
-Once DSH starts, open <http://127.0.0.1:3080>. Press `Ctrl+C` in the command prompt
-or terminal window to stop DSH.
+The first launch may take several minutes while `npx` downloads and initializes
+DSH. Wait until the terminal prints `dsh web: http://127.0.0.1:3080`, then open
+<http://127.0.0.1:3080>. Press `Ctrl+C` in the command prompt or terminal window
+to stop DSH.
